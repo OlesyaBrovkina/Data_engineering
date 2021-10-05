@@ -1,0 +1,108 @@
+--»спользу€ демо базу данных, напишите запросы дл€ того, чтобы:
+
+-- 1. вывести количество фильмов в каждой категории, отсортировать по убыванию.
+
+SELECT COUNT(fc.film_id), c.category_id,c."name" 
+FROM category c
+     LEFT JOIN film_category fc ON c.category_id = fc.category_id
+GROUP BY c.category_id,c."name"
+ORDER BY COUNT(fc.film_id) DESC 
+    
+-- 2. вывести 10 актеров, чьи фильмы большего всего арендовали, отсортировать по убыванию. 
+    
+SELECT  a.actor_id , a.first_name , a.last_name, count(i.film_id) cnt 
+ FROM inventory i
+	LEFT JOIN  rental r  ON i.inventory_id =r.inventory_id
+		LEFT JOIN  film_actor fa ON i.film_id =fa.film_id 
+			LEFT JOIN actor a ON fa.actor_id =a.actor_id
+GROUP BY a.actor_id , a.first_name , a.last_name
+ORDER BY 4 DESC 
+FETCH FIRST 10 ROWS only
+
+
+-- 3. вывести категорию фильмов, на которую потратили больше всего денег.
+
+SELECT  sum(p.amount) s,  c."name" 
+FROM category c 
+	JOIN film_category fc ON c.category_id =fc.category_id 
+		JOIN inventory i ON fc.film_id =i.film_id 
+			JOIN rental r ON i.inventory_id =r.inventory_id 
+				JOIN payment p ON r.rental_id =p.rental_id 
+GROUP BY  c."name"
+ORDER BY 1 DESC 
+FETCH FIRST 1 ROWS only
+	
+-- 4. вывести названи€ фильмов, которых нет в inventory. Ќаписать запрос без использовани€ оператора IN.
+
+SELECT f.film_id, f.title 
+FROM film f 
+LEFT JOIN inventory i ON f.film_id =i.film_id 
+WHERE i.film_id IS NULL 
+
+-- 5. вывести топ 3 актеров, которые больше всего по€вл€лись в фильмах в категории УChildrenФ. ≈сли у нескольких актеров одинаковое кол-во фильмов, вывести всех.
+
+SELECT a.first_name ,a.last_name ,count(fa.film_id)
+FROM category c 
+JOIN film_category fc ON c.category_id =fc.category_id 
+JOIN film_actor fa ON fc.film_id = fa.film_id 
+JOIN actor a ON fa.actor_id =a.actor_id 
+WHERE c."name" ='Children' 
+GROUP BY  a.first_name ,a.last_name 
+HAVING count(fa.film_id) >= 
+			(SELECT min (q.cnt) FROM 
+			(SELECT a.first_name ,a.last_name ,count(fa.film_id) cnt
+			FROM category c 
+			JOIN film_category fc ON c.category_id =fc.category_id 
+			JOIN film_actor fa ON fc.film_id = fa.film_id 
+			JOIN actor a ON fa.actor_id =a.actor_id 
+			WHERE c."name" ='Children' 
+			GROUP BY  a.first_name ,a.last_name 
+			ORDER BY count(fa.film_id) DESC 
+			LIMIT 3 )  AS q)
+
+	
+-- 6. вывести города с количеством активных и неактивных клиентов (активный Ч customer.active = 1). ќтсортировать по количеству неактивных клиентов по убыванию.
+
+SELECT c.city_id , c.city, nonact.s1 as neact, act.s2 as act 			
+FROM city c 			
+LEFT JOIN
+		(SELECT c.city_id id, c.city city1, sum(c2.customer_id) s1
+		FROM city c JOIN  address a ON c.city_id =a.city_id 
+		JOIN customer c2 ON a.address_id =c2.address_id 
+		WHERE c2.active!=1
+		GROUP BY c.city_id, c.city
+		ORDER BY 3) as nonact
+ON c.city_id = nonact.id
+LEFT JOIN 
+		(SELECT c.city_id id, c.city city2, sum(c2.customer_id) s2
+		FROM city c JOIN  address a ON c.city_id =a.city_id 
+		JOIN customer c2 ON a.address_id =c2.address_id 
+		WHERE c2.active=1
+		GROUP BY c.city_id, c.city
+		ORDER BY 3) act
+ON c.city_id=act.id
+ORDER BY 3 DESC NULLS LAST
+			
+-- 7. вывести категорию фильмов, у которой самое большое кол-во часов суммарной аренды в городах (customer.address_id в этом city), и которые начинаютс€ на букву УaФ. “о же самое сделать дл€ городов в которых есть символ У-Ф. Ќаписать все в одном запросе.
+	
+SELECT  sum(sq.duration) sd, sq.category category
+FROM
+	           (SELECT ((DATE_PART('day', return_date::timestamp - rental_date::timestamp) * 24 + 
+	                DATE_PART('hour', return_date::timestamp - rental_date::timestamp)) * 60 +
+	                DATE_PART('minute', return_date::timestamp - rental_date::timestamp)) * 60 +
+	                DATE_PART('second', return_date::timestamp - rental_date::timestamp) as  duration,  
+	              c."name" as category,  
+	              c3.city as city, 
+	              c3.city_id as id,  
+	              f.title as film_name
+	            FROM rental r  JOIN  inventory i ON r.inventory_id =i.inventory_id 
+				JOIN film f ON i.film_id =f.film_id 
+				JOIN film_category fc ON f.film_id =fc.film_id 
+				JOIN category c ON fc.category_id =c.category_id 
+				JOIN customer c2 ON r.customer_id =c2.customer_id 
+				JOIN address a ON c2.address_id =a.address_id 
+				JOIN city c3 ON a.city_id =c3.city_id 
+				WHERE f.title ILIKE 'a%' or c3.city LIKE '%-%') as sq
+GROUP BY category
+ORDER BY sd DESC
+LIMIT 1
